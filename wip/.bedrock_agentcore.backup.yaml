@@ -1,0 +1,137 @@
+default_agent: simple_auth
+agents:
+  identity_propagation_test:
+    name: identity_propagation_test
+    entrypoint: /Users/sanghwa/workspaces/sketch/agentcore-identity-runtime-propagation/identity_aware_agent.py
+    platform: linux/arm64
+    container_runtime: none
+    source_path: null
+    aws:
+      execution_role: arn:aws:iam::269550163595:role/AmazonBedrockAgentCoreSDKRuntime-us-west-2-021053fe89
+      execution_role_auto_create: false
+      account: '269550163595'
+      region: us-west-2
+      ecr_repository: 269550163595.dkr.ecr.us-west-2.amazonaws.com/bedrock-agentcore-identity_propagation_test
+      ecr_auto_create: false
+      network_configuration:
+        network_mode: PUBLIC
+        network_mode_config: null
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: identity_propagation_test-bIo0eb3Kax
+      agent_arn: arn:aws:bedrock-agentcore:us-west-2:269550163595:runtime/identity_propagation_test-bIo0eb3Kax
+      agent_session_id: 8d7621c1-76e4-45b6-bd1b-903f3f1de8ff
+    codebuild:
+      project_name: bedrock-agentcore-identity_propagation_test-builder
+      execution_role: arn:aws:iam::269550163595:role/AmazonBedrockAgentCoreSDKCodeBuild-us-west-2-021053fe89
+      source_bucket: bedrock-agentcore-codebuild-sources-269550163595-us-west-2
+    memory:
+      mode: STM_ONLY
+      memory_id: identity_propagation_test_mem-CSpd90CV1m
+      memory_arn: arn:aws:bedrock-agentcore:us-west-2:269550163595:memory/identity_propagation_test_mem-CSpd90CV1m
+      memory_name: identity_propagation_test_mem
+      event_expiry_days: 30
+      first_invoke_memory_check_done: true
+      was_created_by_toolkit: false
+    authorizer_configuration:
+      customJWTAuthorizer:
+        allowedAudience:
+        - 55166fs2oo2oiuv7hjepcfokbo
+        allowedClients:
+        - 55166fs2oo2oiuv7hjepcfokbo
+        discoveryUrl: https://cognito-idp.us-west-2.amazonaws.com/us-west-2_iFyH1fZx2/.well-known/openid-configuration
+    request_header_configuration: null
+    oauth_configuration: null
+  identity_test:
+    name: identity_test
+    entrypoint: /Users/sanghwa/workspaces/sketch/agentcore-identity-runtime-propagation/identity_aware_agent.py
+    platform: linux/arm64
+    container_runtime: none
+    source_path: null
+    aws:
+      execution_role: arn:aws:iam::269550163595:role/AmazonBedrockAgentCoreSDKRuntime-us-west-2-5f0c170d0d
+      execution_role_auto_create: false
+      account: '269550163595'
+      region: us-west-2
+      ecr_repository: 269550163595.dkr.ecr.us-west-2.amazonaws.com/bedrock-agentcore-identity_test
+      ecr_auto_create: false
+      network_configuration:
+        network_mode: PUBLIC
+        network_mode_config: null
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: identity_test-xZApwJAqnL
+      agent_arn: arn:aws:bedrock-agentcore:us-west-2:269550163595:runtime/identity_test-xZApwJAqnL
+      agent_session_id: 4b89abef-7740-4cdf-ac3b-88f5e97dcd59
+    codebuild:
+      project_name: bedrock-agentcore-identity_test-builder
+      execution_role: arn:aws:iam::269550163595:role/AmazonBedrockAgentCoreSDKCodeBuild-us-west-2-5f0c170d0d
+      source_bucket: bedrock-agentcore-codebuild-sources-269550163595-us-west-2
+    memory:
+      mode: STM_ONLY
+      memory_id: identity_test_mem-gx6EYnC8r5
+      memory_arn: arn:aws:bedrock-agentcore:us-west-2:269550163595:memory/identity_test_mem-gx6EYnC8r5
+      memory_name: identity_test_mem
+      event_expiry_days: 30
+      first_invoke_memory_check_done: true
+      was_created_by_toolkit: false
+    authorizer_configuration:
+      customJWTAuthorizer:
+        allowedAudience:
+        - 70puipkfpgs2u4v8fshkdv8qf
+        discoveryUrl: https://cognito-idp.us-west-2.amazonaws.com/us-west-2_Agqf33bTM/.well-known/openid-configuration
+    request_header_configuration:
+      requestHeaderAllowlist:
+      - Authorization
+    oauth_configuration: null
+  simple_auth:
+    name: simple_auth
+    entrypoint: /Users/sanghwa/workspaces/sketch/agentcore-identity-runtime-propagation/simple_auth_agent.py
+    platform: linux/arm64
+    container_runtime: docker
+    source_path: null
+    aws:
+      execution_role: arn:aws:iam::780622314958:role/AmazonBedrockAgentCoreSDKRuntime-us-west-2-d0278111c7
+      execution_role_auto_create: false
+      account: '269550163595'
+      region: us-west-2
+      ecr_repository: 269550163595.dkr.ecr.us-west-2.amazonaws.com/bedrock-agentcore-simple_auth
+      ecr_auto_create: false
+      network_configuration:
+        network_mode: PUBLIC
+        network_mode_config: null
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+    bedrock_agentcore:
+      agent_id: simple_auth-XSxH3C9MYr
+      agent_arn: arn:aws:bedrock-agentcore:us-west-2:269550163595:runtime/simple_auth-XSxH3C9MYr
+      agent_session_id: 5787eeb3-a32e-40f7-86b8-b66010130424
+    codebuild:
+      project_name: null
+      execution_role: null
+      source_bucket: null
+    memory:
+      mode: STM_ONLY
+      memory_id: simple_auth_mem-txKA6VDGNz
+      memory_arn: arn:aws:bedrock-agentcore:us-west-2:780622314958:memory/simple_auth_mem-txKA6VDGNz
+      memory_name: simple_auth_mem
+      event_expiry_days: 30
+      first_invoke_memory_check_done: false
+      was_created_by_toolkit: true
+    authorizer_configuration:
+      customJWTAuthorizer:
+        allowedClients:
+        - 5d16rufhvvm4iraa95b4jebdgi
+        discoveryUrl: https://cognito-idp.us-west-2.amazonaws.com/us-west-2_4GTEYHuDO/.well-known/openid-configuration
+    request_header_configuration:
+      requestHeaderAllowlist:
+      - Authorization
+    oauth_configuration: null
