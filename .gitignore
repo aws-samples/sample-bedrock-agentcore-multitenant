@@ -63,3 +63,12 @@ notebooks/*/*_agent.py
 
 # Others
 wip/wip/
+
+# Blog drafts
+blog/
+
+# Drawio source files
+drawio/
+
+# PID files
+*.pid

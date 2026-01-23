@@ -13,8 +13,7 @@ class CognitoService:
         self.region = Config.AWS_REGION
         self.user_pool_id = Config.COGNITO_USER_POOL_ID
         self.client_id = Config.COGNITO_CLIENT_ID
-        self.client_secret = Config.COGNITO_CLIENT_SECRET
-        self.cognito_domain = Config.COGNITO_DOMAIN
+        self.client_secret = None  # Not using client secret
         
         # Validate required configuration
         if not all([self.region, self.user_pool_id, self.client_id]):

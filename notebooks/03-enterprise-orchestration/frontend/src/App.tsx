@@ -1,16 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import AppLayout from '@cloudscape-design/components/app-layout';
+import React, { useState } from 'react';
 import TopNavigation from '@cloudscape-design/components/top-navigation';
 import SpaceBetween from '@cloudscape-design/components/space-between';
 import Alert from '@cloudscape-design/components/alert';
-import Tabs from '@cloudscape-design/components/tabs';
 
 import { LoginScreen } from './components/LoginScreen';
-import { StatisticsDashboard } from './components/StatisticsDashboard';
-import { ClaimsTable } from './components/ClaimsTable';
 import { ChatInterface } from './components/ChatInterface';
 
-import { api, LoginResponse, ClaimsResponse } from './services/api';
+import { api, LoginResponse } from './services/api';
 import { getInitials, getCurrentTimestamp } from './utils/formatters';
 
 interface Message {
@@ -24,65 +20,18 @@ interface Message {
 
 function App() {
   const [user, setUser] = useState<LoginResponse | null>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [claims, setClaims] = useState<any[]>([]);
-  const [statistics, setStatistics] = useState<any>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('claims');
 
-  useEffect(() => {
-    if (user) {
-      loadClaims();
-    }
-  }, [user]);
-
-  const handleLogin = async () => {
-    setError(null);
-    setLoading(true);
-    
-    try {
-      const response = await api.login(email, password);
-      
-      if (response.success) {
-        setUser(response);
-        setMessages([{
-          type: 'incoming',
-          content: `Welcome ${response.user_info.given_name}! You are logged in as ${response.tenant_name}. I can help you with your insurance claims and policies.`,
-          timestamp: getCurrentTimestamp()
-        }]);
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Login failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadClaims = async () => {
-    if (!user) return;
-    
-    try {
-      const response = await api.getClaims(user.access_token);
-      
-      if (response.success) {
-        setClaims(response.claims);
-        setStatistics(response.statistics);
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load claims');
-    }
-  };
-
-  const handleSendMessage = async () => {
-    if (!prompt.trim() || loading || !user) return;
+  const handleSendMessage = async (directQuery?: string) => {
+    const queryText = directQuery || prompt;
+    if (!queryText.trim() || loading || !user) return;
 
     const userMessage: Message = {
       type: 'outgoing',
-      content: prompt,
+      content: queryText,
       timestamp: getCurrentTimestamp()
     };
 
@@ -92,7 +41,7 @@ function App() {
     setError(null);
 
     try {
-      const response = await api.query(user.access_token, prompt);
+      const response = await api.query(user.access_token, queryText, user.tenant_id, user.agent_type, user.session_id);
 
       const aiMessage: Message = {
         type: 'incoming',
@@ -103,11 +52,6 @@ function App() {
       };
 
       setMessages(prev => [...prev, aiMessage]);
-      
-      // Refresh claims if it was a structured query
-      if (response.query_type === 'structured') {
-        loadClaims();
-      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Query failed');
       
@@ -127,25 +71,42 @@ function App() {
   const handleLogout = () => {
     setUser(null);
     setMessages([]);
-    setClaims([]);
-    setStatistics(null);
-    setEmail('');
-    setPassword('');
-    setActiveTab('claims');
+  };
+
+  const handleDemoLogin = async (demoUser: any) => {
+    setError(null);
+    setLoading(true);
+    
+    try {
+      // Call backend to get real Cognito tokens
+      const response = await api.demoLogin(demoUser.username, demoUser.agent_type);
+      
+      if (response.success) {
+        setUser(response);
+        const agentDesc = response.agent_type === 'rag' 
+          ? 'policy documents (RAG with metadata filtering)'
+          : 'insurance claims (RLS with Row-Level Security)';
+        setMessages([{
+          type: 'incoming',
+          content: `Welcome ${response.user_info.given_name}! You are logged in as **${response.tenant_name}**. I can help you query your ${agentDesc}.`,
+          timestamp: getCurrentTimestamp()
+        }]);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Demo login failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Login Screen
   if (!user) {
     return (
       <LoginScreen
-        email={email}
-        password={password}
         loading={loading}
         error={error}
-        onEmailChange={setEmail}
-        onPasswordChange={setPassword}
-        onLogin={handleLogin}
         onDismissError={() => setError(null)}
+        onDemoLogin={handleDemoLogin}
       />
     );
   }
@@ -157,76 +118,49 @@ function App() {
 
   // Main Application
   return (
-    <>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <TopNavigation
         identity={{
           href: '#',
-          title: 'Insurance Claims Portal',
-          logo: {
-            src: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI0IiBmaWxsPSIjMjMyRjNFIi8+PHBhdGggZD0iTTE2IDhMMjQgMTZMMTYgMjRMOCAxNkwxNiA4WiIgZmlsbD0iIzAwN0RCQyIvPjwvc3ZnPg==',
-            alt: 'Logo'
-          }
+          title: `Insurance Claims Portal - ${user.agent_type === 'rag' ? 'Policy Agent' : 'Claims Agent'}`
         }}
         utilities={[
           {
             type: 'button',
-            text: user.tenant_name,
-            description: user.email,
+            text: `${user.user_info.given_name} (${user.tenant_name})`,
             iconName: 'user-profile'
           },
           {
             type: 'button',
-            text: 'Logout',
+            text: 'Switch User',
             onClick: handleLogout,
-            iconName: 'close'
+            iconName: 'redo'
           }
         ]}
       />
 
-      <AppLayout
-        navigationHide
-        toolsHide
-        content={
-          <SpaceBetween size="l">
-            {error && (
-              <Alert type="error" dismissible onDismiss={() => setError(null)}>
-                {error}
-              </Alert>
-            )}
+      <div style={{ flex: 1, padding: '20px', background: '#f1f3f5' }}>
+        <SpaceBetween size="m">
+          {error && (
+            <Alert type="error" dismissible onDismiss={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
 
-            {statistics && <StatisticsDashboard statistics={statistics} />}
-
-            <Tabs
-              activeTabId={activeTab}
-              onChange={({ detail }) => setActiveTab(detail.activeTabId)}
-              tabs={[
-                {
-                  id: 'claims',
-                  label: 'Claims Data',
-                  content: <ClaimsTable claims={claims} />
-                },
-                {
-                  id: 'chat',
-                  label: 'AI Assistant',
-                  content: (
-                    <ChatInterface
-                      messages={messages}
-                      prompt={prompt}
-                      loading={loading}
-                      userInitials={userInitials}
-                      userEmail={user.email}
-                      tenantId={user.tenant_id}
-                      onPromptChange={setPrompt}
-                      onSendMessage={handleSendMessage}
-                    />
-                  )
-                }
-              ]}
-            />
-          </SpaceBetween>
-        }
-      />
-    </>
+          <ChatInterface
+            messages={messages}
+            prompt={prompt}
+            loading={loading}
+            userInitials={userInitials}
+            userEmail={user.email}
+            tenantId={user.tenant_id}
+            agentType={user.agent_type}
+            onPromptChange={setPrompt}
+            onSendMessage={handleSendMessage}
+          />
+        </SpaceBetween>
+      </div>
+    </div>
   );
 }
 

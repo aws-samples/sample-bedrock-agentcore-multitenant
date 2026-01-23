@@ -36,15 +36,7 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Demo Accounts
 
-### Broker A
-- **Email**: broker-a@example.com
-- **Password**: Pass123!
-- **Claims**: 5 claims (CLM-A-001 to CLM-A-005)
-
-### Broker B
-- **Email**: broker-b@example.com
-- **Password**: Pass123!
-- **Claims**: 2 claims (CLM-B-001 to CLM-B-002)
+Demo users are available in the login screen. Select an agent type and user to test multi-tenant isolation.
 
 ## Features Demonstrated
 

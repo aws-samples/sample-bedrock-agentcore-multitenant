@@ -97,12 +97,18 @@ class CognitoManager:
     def get_or_create_user(
         self, user_pool_id: str, username: str, password: str, attributes: list
     ):
-        """Get existing user or create new one"""
+        """Get existing user or create new one. Returns dict with 'sub' key."""
         try:
             # Check if user exists
-            self.client.admin_get_user(UserPoolId=user_pool_id, Username=username)
+            user_response = self.client.admin_get_user(UserPoolId=user_pool_id, Username=username)
             print(f"  ↻ User exists: {username}")
-            return
+            # Extract sub from existing user
+            sub = None
+            for attr in user_response.get('UserAttributes', []):
+                if attr['Name'] == 'sub':
+                    sub = attr['Value']
+                    break
+            return {'sub': sub, 'username': username}
         except self.client.exceptions.UserNotFoundException:
             pass
 
@@ -123,7 +129,16 @@ class CognitoManager:
             Permanent=True,
         )
 
+        # Get the created user's sub
+        user_response = self.client.admin_get_user(UserPoolId=user_pool_id, Username=username)
+        sub = None
+        for attr in user_response.get('UserAttributes', []):
+            if attr['Name'] == 'sub':
+                sub = attr['Value']
+                break
+
         print(f"  ✓ Created user: {username}")
+        return {'sub': sub, 'username': username}
 
 
 class S3Manager:
@@ -1144,6 +1159,29 @@ class KnowledgeBaseManager:
     def sync_data_source(self, kb_id: str, data_source_id: str):
         """Start ingestion job and wait for completion"""
 
+        # Wait for Knowledge Base to be ACTIVE before starting ingestion
+        print("Checking Knowledge Base status...")
+        max_wait = 300
+        wait_interval = 10
+        elapsed = 0
+        
+        while elapsed < max_wait:
+            kb_detail = self.client.get_knowledge_base(knowledgeBaseId=kb_id)
+            kb_status = kb_detail["knowledgeBase"]["status"]
+            
+            if kb_status == "ACTIVE":
+                print(f"  ✓ Knowledge Base is ACTIVE")
+                break
+            elif kb_status in ["FAILED", "DELETE_UNSUCCESSFUL"]:
+                raise Exception(f"Knowledge Base is in {kb_status} state")
+            else:
+                print(f"  Status: {kb_status}, waiting...")
+                time.sleep(wait_interval)
+                elapsed += wait_interval
+        
+        if elapsed >= max_wait:
+            raise TimeoutError("Knowledge Base did not become ACTIVE in time")
+
         print("Starting ingestion job...")
 
         response = self.client.start_ingestion_job(
@@ -1169,71 +1207,125 @@ class KnowledgeBaseManager:
         if status == "COMPLETE":
             stats = status_response["ingestionJob"].get("statistics", {})
             docs_scanned = stats.get("numberOfDocumentsScanned", 0)
-            docs_indexed = stats.get("numberOfDocumentsIndexed", 0)
+            docs_indexed = stats.get("numberOfNewDocumentsIndexed", 0)
             docs_failed = stats.get("numberOfDocumentsFailed", 0)
+            print(f"  Ingestion job complete - Scanned: {docs_scanned}, Indexed: {docs_indexed}, Failed: {docs_failed}")
+
             print(f"✓ Ingestion complete - Scanned: {docs_scanned}, Indexed: {docs_indexed}, Failed: {docs_failed}")
             return True
         else:
             raise Exception(f"Ingestion failed: {status}")
 
-    def wait_for_kb_ready(self, kb_id: str):
-        """Wait for Knowledge Base to be ready with indexed documents"""
 
-        print("Checking Knowledge Base readiness...")
-        max_wait = 120
-        wait_interval = 10
-        elapsed = 0
-
-        while elapsed < max_wait:
+def cleanup_orphaned_opensearch_policies(region: str, prefix: str = "kb-"):
+    """
+    Cleanup orphaned OpenSearch Serverless policies that don't have associated collections.
+    
+    This is useful when collections are deleted but their policies remain.
+    
+    Args:
+        region: AWS region
+        prefix: Policy name prefix to match (default: "kb-")
+    """
+    print("\n" + "=" * 60)
+    print("CLEANUP: Orphaned OpenSearch Serverless Policies")
+    print("=" * 60)
+    
+    try:
+        oss_client = boto3.client("opensearchserverless", region_name=region)
+        
+        # Get all existing collection names
+        existing_collections = set()
+        try:
+            collections = oss_client.list_collections()
+            for col in collections.get("collectionSummaries", []):
+                existing_collections.add(col["name"])
+        except Exception as e:
+            print(f"⚠ Could not list collections: {e}")
+        
+        deleted_count = 0
+        
+        # Cleanup encryption and network policies
+        for policy_type in ['encryption', 'network']:
             try:
-                # Check KB status
-                kb_detail = self.client.get_knowledge_base(knowledgeBaseId=kb_id)
-                kb_status = kb_detail["knowledgeBase"]["status"]
-
-                # Check latest ingestion job
-                ds_list = self.client.list_data_sources(knowledgeBaseId=kb_id)
-
-                if ds_list["dataSourceSummaries"]:
-                    data_source_id = ds_list["dataSourceSummaries"][0]["dataSourceId"]
-
-                    jobs = self.client.list_ingestion_jobs(
-                        knowledgeBaseId=kb_id, dataSourceId=data_source_id, maxResults=1
-                    )
-
-                    if jobs["ingestionJobSummaries"]:
-                        latest_job = jobs["ingestionJobSummaries"][0]
-                        job_status = latest_job["status"]
-
-                        if kb_status == "ACTIVE" and job_status == "COMPLETE":
-                            # Get ingestion stats
-                            job_detail = self.client.get_ingestion_job(
-                                knowledgeBaseId=kb_id,
-                                dataSourceId=data_source_id,
-                                ingestionJobId=latest_job["ingestionJobId"],
+                policies = oss_client.list_security_policies(type=policy_type)
+                for policy in policies.get('securityPolicySummaries', []):
+                    policy_name = policy['name']
+                    if policy_name.startswith(prefix):
+                        # Check if this policy has an associated collection
+                        try:
+                            policy_detail = oss_client.get_security_policy(
+                                name=policy_name, type=policy_type
                             )
-
-                            stats = job_detail["ingestionJob"].get("statistics", {})
-                            docs_indexed = stats.get("numberOfDocumentsIndexed", 0)
-
-                            if docs_indexed > 0:
-                                print(
-                                    f"✓ Knowledge Base is ready with {docs_indexed} documents indexed"
-                                )
-                                return True
-                        elif job_status == "FAILED":
-                            print("✗ Ingestion job failed")
-                            return False
-
-                time.sleep(wait_interval)
-                elapsed += wait_interval
-
+                            policy_doc = json.loads(policy_detail['securityPolicyDetail']['policy'])
+                            
+                            # Extract collection name from policy
+                            has_active_collection = False
+                            if isinstance(policy_doc, dict) and 'Rules' in policy_doc:
+                                for rule in policy_doc['Rules']:
+                                    for resource in rule.get('Resource', []):
+                                        if resource.startswith('collection/'):
+                                            col_name = resource.replace('collection/', '')
+                                            if col_name in existing_collections:
+                                                has_active_collection = True
+                                                break
+                            
+                            if not has_active_collection:
+                                oss_client.delete_security_policy(name=policy_name, type=policy_type)
+                                print(f"  Deleted orphaned {policy_type} policy: {policy_name}")
+                                deleted_count += 1
+                        except Exception as e:
+                            # If we can't parse, try to delete anyway
+                            try:
+                                oss_client.delete_security_policy(name=policy_name, type=policy_type)
+                                print(f"  Deleted {policy_type} policy: {policy_name}")
+                                deleted_count += 1
+                            except:
+                                pass
             except Exception as e:
-                print(f"  Error checking KB status: {e}")
-                time.sleep(wait_interval)
-                elapsed += wait_interval
-
-        print("⚠ KB status check timeout, but may still be ready")
-        return False
+                print(f"⚠ Error processing {policy_type} policies: {e}")
+        
+        # Cleanup data access policies
+        try:
+            policies = oss_client.list_access_policies(type='data')
+            for policy in policies.get('accessPolicySummaries', []):
+                policy_name = policy['name']
+                if policy_name.startswith(prefix):
+                    # Check if this policy has an associated collection
+                    try:
+                        policy_detail = oss_client.get_access_policy(name=policy_name, type='data')
+                        policy_doc = json.loads(policy_detail['accessPolicyDetail']['policy'])
+                        
+                        has_active_collection = False
+                        if isinstance(policy_doc, list):
+                            for statement in policy_doc:
+                                for rule in statement.get('Rules', []):
+                                    for resource in rule.get('Resource', []):
+                                        if resource.startswith('collection/'):
+                                            col_name = resource.replace('collection/', '')
+                                            if col_name in existing_collections:
+                                                has_active_collection = True
+                                                break
+                        
+                        if not has_active_collection:
+                            oss_client.delete_access_policy(name=policy_name, type='data')
+                            print(f"  Deleted orphaned access policy: {policy_name}")
+                            deleted_count += 1
+                    except Exception as e:
+                        # If we can't parse, try to delete anyway
+                        try:
+                            oss_client.delete_access_policy(name=policy_name, type='data')
+                            print(f"  Deleted access policy: {policy_name}")
+                            deleted_count += 1
+                        except:
+                            pass
+        except Exception as e:
+            print(f"⚠ Error processing access policies: {e}")
+        
+        print(f"\n✓ Cleanup complete. Deleted {deleted_count} orphaned policies.")
+        
+    except Exception as e:
+        print(f"✗ Error during cleanup: {e}")
 
 
 def cleanup_knowledge_base_resources(
@@ -1323,45 +1415,48 @@ def cleanup_knowledge_base_resources(
                 # Wait for deletion
                 time.sleep(30)
                 print(f"  ✓ Collection deleted")
-                
-                # Delete associated policies
-                print(f"  Deleting associated policies...")
-                timestamp = int(time.time())
-                
-                # Try to delete policies (they may not exist)
-                for policy_type in ['encryption', 'network']:
-                    try:
-                        policies = oss_manager.client.list_security_policies(type=policy_type)
-                        for policy in policies.get('securityPolicySummaries', []):
-                            if collection_name in policy['name'] or 'kb-' in policy['name']:
-                                try:
-                                    oss_manager.client.delete_security_policy(
-                                        name=policy['name'],
-                                        type=policy_type
-                                    )
-                                    print(f"    Deleted {policy_type} policy: {policy['name']}")
-                                except:
-                                    pass
-                    except:
-                        pass
-                
-                # Delete data access policies
-                try:
-                    policies = oss_manager.client.list_access_policies(type='data')
-                    for policy in policies.get('accessPolicySummaries', []):
-                        if collection_name in policy['name'] or 'kb-' in policy['name']:
-                            try:
-                                oss_manager.client.delete_access_policy(
-                                    name=policy['name'],
-                                    type='data'
-                                )
-                                print(f"    Deleted data access policy: {policy['name']}")
-                            except:
-                                pass
-                except:
-                    pass
             else:
                 print(f"  ↻ Collection not found: {collection_name}")
+            
+            # Delete associated policies (regardless of collection existence)
+            print(f"  Cleaning up OpenSearch policies...")
+            
+            # Delete encryption and network policies
+            for policy_type in ['encryption', 'network']:
+                try:
+                    policies = oss_manager.client.list_security_policies(type=policy_type)
+                    for policy in policies.get('securityPolicySummaries', []):
+                        policy_name = policy['name']
+                        # Match policies for this collection or orphaned kb-* policies
+                        if collection_name in policy_name:
+                            try:
+                                oss_manager.client.delete_security_policy(
+                                    name=policy_name,
+                                    type=policy_type
+                                )
+                                print(f"    Deleted {policy_type} policy: {policy_name}")
+                            except Exception as e:
+                                print(f"    ⚠ Could not delete {policy_type} policy {policy_name}: {e}")
+                except Exception as e:
+                    print(f"    ⚠ Error listing {policy_type} policies: {e}")
+            
+            # Delete data access policies
+            try:
+                policies = oss_manager.client.list_access_policies(type='data')
+                for policy in policies.get('accessPolicySummaries', []):
+                    policy_name = policy['name']
+                    if collection_name in policy_name:
+                        try:
+                            oss_manager.client.delete_access_policy(
+                                name=policy_name,
+                                type='data'
+                            )
+                            print(f"    Deleted data access policy: {policy_name}")
+                        except Exception as e:
+                            print(f"    ⚠ Could not delete access policy {policy_name}: {e}")
+            except Exception as e:
+                print(f"    ⚠ Error listing access policies: {e}")
+                
         except Exception as e:
             print(f"  ✗ Error deleting collection: {e}")
     
@@ -1488,4 +1583,286 @@ def cleanup_cognito_resources(
     
     print("\n" + "=" * 60)
     print("✓ Cleanup Complete")
+    print("=" * 60)
+
+
+class AuroraServerlessManager:
+    """Manage Aurora Serverless v2 PostgreSQL clusters"""
+
+    def __init__(self, region: str):
+        self.rds = boto3.client("rds", region_name=region)
+        self.ec2 = boto3.client("ec2", region_name=region)
+        self.region = region
+        self.account_id = boto3.client("sts").get_caller_identity()["Account"]
+
+    def get_or_create_cluster(
+        self,
+        cluster_name: str,
+        database_name: str = "insurance_claims",
+        master_username: str = "postgres",
+        master_password: str = None,
+    ):
+        """Get existing Aurora cluster or create new one"""
+        
+        # Check if cluster exists
+        try:
+            response = self.rds.describe_db_clusters(DBClusterIdentifier=cluster_name)
+            if response["DBClusters"]:
+                cluster = response["DBClusters"][0]
+                endpoint = cluster["Endpoint"]
+                cluster_arn = cluster["DBClusterArn"]
+                secret_arn = f"arn:aws:secretsmanager:{self.region}:{self.account_id}:secret:{cluster_name}-credentials"
+                print(f"✓ Found existing Aurora cluster: {cluster_name}")
+                print(f"  Endpoint: {endpoint}")
+                return {
+                    "cluster_id": cluster_name,
+                    "cluster_arn": cluster_arn,
+                    "endpoint": endpoint,
+                    "port": cluster["Port"],
+                    "database": cluster["DatabaseName"],
+                    "secret_arn": secret_arn,
+                    "status": cluster["Status"],
+                }
+        except self.rds.exceptions.DBClusterNotFoundFault:
+            pass
+
+        if not master_password:
+            import secrets
+            master_password = secrets.token_urlsafe(16) + "Aa1!"
+            print(f"  Generated password: {master_password}")
+
+        print(f"Creating Aurora Serverless v2 cluster: {cluster_name}")
+
+        # Get default VPC and subnets
+        vpcs = self.ec2.describe_vpcs(Filters=[{"Name": "is-default", "Values": ["true"]}])
+        if not vpcs["Vpcs"]:
+            raise Exception("No default VPC found")
+        vpc_id = vpcs["Vpcs"][0]["VpcId"]
+
+        subnets = self.ec2.describe_subnets(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])
+        subnet_ids = [s["SubnetId"] for s in subnets["Subnets"][:2]]
+
+        # Create DB subnet group
+        subnet_group_name = f"{cluster_name}-subnet-group"
+        try:
+            self.rds.create_db_subnet_group(
+                DBSubnetGroupName=subnet_group_name,
+                DBSubnetGroupDescription=f"Subnet group for {cluster_name}",
+                SubnetIds=subnet_ids,
+            )
+            print(f"  ✓ Created subnet group: {subnet_group_name}")
+        except self.rds.exceptions.DBSubnetGroupAlreadyExistsFault:
+            print(f"  ↻ Subnet group exists: {subnet_group_name}")
+
+        # Create security group
+        sg_name = f"{cluster_name}-sg"
+        try:
+            sg_response = self.ec2.create_security_group(
+                GroupName=sg_name,
+                Description=f"Security group for {cluster_name}",
+                VpcId=vpc_id,
+            )
+            sg_id = sg_response["GroupId"]
+            
+            # Allow PostgreSQL access from anywhere (for demo - restrict in production)
+            self.ec2.authorize_security_group_ingress(
+                GroupId=sg_id,
+                IpPermissions=[{
+                    "IpProtocol": "tcp",
+                    "FromPort": 5432,
+                    "ToPort": 5432,
+                    "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": "PostgreSQL access"}],
+                }],
+            )
+            print(f"  ✓ Created security group: {sg_id}")
+        except self.ec2.exceptions.ClientError as e:
+            if "InvalidGroup.Duplicate" in str(e):
+                sgs = self.ec2.describe_security_groups(
+                    Filters=[{"Name": "group-name", "Values": [sg_name]}]
+                )
+                sg_id = sgs["SecurityGroups"][0]["GroupId"]
+                print(f"  ↻ Security group exists: {sg_id}")
+            else:
+                raise
+
+        # Create Aurora Serverless v2 cluster
+        # Use a version compatible with Aurora Serverless v2
+        self.rds.create_db_cluster(
+            DBClusterIdentifier=cluster_name,
+            Engine="aurora-postgresql",
+            EngineVersion="16.4",  # Aurora PostgreSQL 16.4 supports Serverless v2
+            EngineMode="provisioned",  # Serverless v2 uses provisioned mode
+            DatabaseName=database_name,
+            MasterUsername=master_username,
+            MasterUserPassword=master_password,
+            DBSubnetGroupName=subnet_group_name,
+            VpcSecurityGroupIds=[sg_id],
+            ServerlessV2ScalingConfiguration={
+                "MinCapacity": 0.5,  # Minimum ACUs (can scale to 0 with pause)
+                "MaxCapacity": 4.0,  # Maximum ACUs
+            },
+            EnableHttpEndpoint=True,  # Enable Data API
+            StorageEncrypted=True,
+        )
+        print(f"  ✓ Created Aurora cluster")
+
+        # Create Serverless v2 instance
+        instance_id = f"{cluster_name}-instance"
+        self.rds.create_db_instance(
+            DBInstanceIdentifier=instance_id,
+            DBInstanceClass="db.serverless",
+            Engine="aurora-postgresql",
+            DBClusterIdentifier=cluster_name,
+        )
+        print(f"  ✓ Created Serverless v2 instance: {instance_id}")
+
+        # Store credentials in Secrets Manager for Data API
+        secrets_client = boto3.client("secretsmanager", region_name=self.region)
+        secret_name = f"{cluster_name}-credentials"
+        
+        try:
+            # Check if secret exists
+            secrets_client.describe_secret(SecretId=secret_name)
+            # Update existing secret
+            secrets_client.put_secret_value(
+                SecretId=secret_name,
+                SecretString=json.dumps({
+                    "username": master_username,
+                    "password": master_password,
+                    "host": f"{cluster_name}.cluster-{self.region}.rds.amazonaws.com",
+                    "port": 5432,
+                    "dbname": database_name
+                })
+            )
+            print(f"  ✓ Updated credentials in Secrets Manager")
+        except secrets_client.exceptions.ResourceNotFoundException:
+            # Create new secret
+            secrets_client.create_secret(
+                Name=secret_name,
+                SecretString=json.dumps({
+                    "username": master_username,
+                    "password": master_password,
+                    "host": f"{cluster_name}.cluster-{self.region}.rds.amazonaws.com",
+                    "port": 5432,
+                    "dbname": database_name
+                })
+            )
+            print(f"  ✓ Stored credentials in Secrets Manager: {secret_name}")
+        
+        secret_arn = f"arn:aws:secretsmanager:{self.region}:{self.account_id}:secret:{secret_name}"
+
+        # Wait for cluster to be available
+        print("  Waiting for cluster to be available (this may take 5-10 minutes)...")
+        waiter = self.rds.get_waiter("db_cluster_available")
+        waiter.wait(
+            DBClusterIdentifier=cluster_name,
+            WaiterConfig={"Delay": 30, "MaxAttempts": 40}
+        )
+
+        # Get endpoint and ARN
+        response = self.rds.describe_db_clusters(DBClusterIdentifier=cluster_name)
+        cluster = response["DBClusters"][0]
+        endpoint = cluster["Endpoint"]
+        cluster_arn = cluster["DBClusterArn"]
+
+        print(f"  ✓ Cluster is available")
+        print(f"  Endpoint: {endpoint}")
+
+        return {
+            "cluster_id": cluster_name,
+            "cluster_arn": cluster_arn,
+            "endpoint": endpoint,
+            "port": cluster["Port"],
+            "database": database_name,
+            "master_username": master_username,
+            "master_password": master_password,
+            "secret_arn": secret_arn,
+            "status": cluster["Status"],
+        }
+
+    def delete_cluster(self, cluster_name: str):
+        """Delete Aurora cluster and associated resources"""
+        print(f"\nDeleting Aurora cluster: {cluster_name}")
+
+        # Delete instances first
+        try:
+            instances = self.rds.describe_db_instances(
+                Filters=[{"Name": "db-cluster-id", "Values": [cluster_name]}]
+            )
+            for instance in instances["DBInstances"]:
+                instance_id = instance["DBInstanceIdentifier"]
+                print(f"  Deleting instance: {instance_id}")
+                self.rds.delete_db_instance(
+                    DBInstanceIdentifier=instance_id,
+                    SkipFinalSnapshot=True,
+                )
+            
+            # Wait for instances to be deleted
+            for instance in instances["DBInstances"]:
+                instance_id = instance["DBInstanceIdentifier"]
+                print(f"  Waiting for instance deletion: {instance_id}")
+                waiter = self.rds.get_waiter("db_instance_deleted")
+                waiter.wait(
+                    DBInstanceIdentifier=instance_id,
+                    WaiterConfig={"Delay": 30, "MaxAttempts": 40}
+                )
+        except Exception as e:
+            print(f"  ⚠ Error deleting instances: {e}")
+
+        # Delete cluster
+        try:
+            self.rds.delete_db_cluster(
+                DBClusterIdentifier=cluster_name,
+                SkipFinalSnapshot=True,
+            )
+            print(f"  ✓ Cluster deletion initiated")
+            
+            # Wait for cluster deletion
+            print("  Waiting for cluster deletion...")
+            waiter = self.rds.get_waiter("db_cluster_deleted")
+            waiter.wait(
+                DBClusterIdentifier=cluster_name,
+                WaiterConfig={"Delay": 30, "MaxAttempts": 40}
+            )
+            print(f"  ✓ Cluster deleted")
+        except self.rds.exceptions.DBClusterNotFoundFault:
+            print(f"  ↻ Cluster not found: {cluster_name}")
+        except Exception as e:
+            print(f"  ⚠ Error deleting cluster: {e}")
+
+        # Delete subnet group
+        subnet_group_name = f"{cluster_name}-subnet-group"
+        try:
+            self.rds.delete_db_subnet_group(DBSubnetGroupName=subnet_group_name)
+            print(f"  ✓ Deleted subnet group: {subnet_group_name}")
+        except Exception as e:
+            print(f"  ⚠ Error deleting subnet group: {e}")
+
+        # Delete security group
+        sg_name = f"{cluster_name}-sg"
+        try:
+            sgs = self.ec2.describe_security_groups(
+                Filters=[{"Name": "group-name", "Values": [sg_name]}]
+            )
+            if sgs["SecurityGroups"]:
+                sg_id = sgs["SecurityGroups"][0]["GroupId"]
+                self.ec2.delete_security_group(GroupId=sg_id)
+                print(f"  ✓ Deleted security group: {sg_id}")
+        except Exception as e:
+            print(f"  ⚠ Error deleting security group: {e}")
+
+        print(f"✓ Aurora cluster cleanup complete")
+
+
+def cleanup_aurora_resources(region: str, cluster_name: str):
+    """Cleanup Aurora Serverless resources"""
+    print("\n" + "=" * 60)
+    print("CLEANUP: Deleting Aurora Serverless Resources")
+    print("=" * 60)
+    
+    aurora = AuroraServerlessManager(region)
+    aurora.delete_cluster(cluster_name)
+    
+    print("\n" + "=" * 60)
+    print("✓ Aurora Cleanup Complete")
     print("=" * 60)

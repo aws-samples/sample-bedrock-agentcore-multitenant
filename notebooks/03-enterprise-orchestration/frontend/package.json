@@ -10,13 +10,15 @@
     "eject": "react-scripts eject"
   },
   "dependencies": {
-    "@cloudscape-design/components": "^3.0.0",
     "@cloudscape-design/chat-components": "^1.0.0",
+    "@cloudscape-design/components": "^3.0.0",
     "@cloudscape-design/global-styles": "^1.0.0",
+    "axios": "^1.6.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-markdown": "^10.1.0",
     "react-scripts": "5.0.1",
-    "axios": "^1.6.0"
+    "remark-gfm": "^4.0.1"
   },
   "eslintConfig": {
     "extends": [
@@ -34,5 +36,9 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.9",
+    "@types/react-dom": "^19.2.3"
   }
 }

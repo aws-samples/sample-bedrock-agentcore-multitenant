@@ -1,380 +1,187 @@
-# 03 - Enterprise Multi-Agent Orchestration
+# 03 - Enterprise Orchestration Demo
 
-Complete multi-tenant insurance platform with supervisor agent orchestration, production-ready UI, and enterprise-grade architecture.
+Web-based demo application showcasing the multi-tenant agents from Tutorials 01 and 02.
 
 ## Overview
 
-This tutorial brings together the specialized agents from Tutorials 01 and 02 under a supervisor agent, providing a production-ready web application for multi-tenant insurance operations. You'll learn how to build enterprise-grade orchestration with proper authentication, routing, and UI integration.
+This tutorial provides a production-ready web interface to interact with the specialized agents built in previous tutorials. The frontend directly calls each agent with proper OAuth authentication, demonstrating real-world multi-tenant isolation.
 
 ## What This Demonstrates
 
-- **Supervisor Agent Pattern**: Intelligent routing to specialized agents
-- **Multi-Agent Orchestration**: Coordinating RAG and RLS agents
 - **Production UI**: AWS Cloudscape Design System
-- **Enterprise Authentication**: OAuth 2.0 with custom scopes
-- **Full-Stack Integration**: React frontend + Flask backend + Strands agents
-- **Tenant Context Propagation**: Maintaining tier context across the stack
+- **OAuth 2.0 Authentication**: Real Cognito tokens for each agent
+- **Direct Agent Invocation**: Backend calls AgentCore agents via HTTPS with Bearer tokens
+- **Multi-Tenant Isolation**: Each user sees only their tenant's data
+- **Session Management**: Conversation history via session IDs
 
 ## Architecture
 
+![Tutorial 03 Architecture](../../images/tutorial-03-demo-architecture.png)
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Frontend (Cloudscape UI)                  │
-│  - Login with Cognito                                        │
-│  - Claims Dashboard                                          │
-│  - AI Chat Assistant                                         │
-│  - Tier-specific views                                       │
+│                    Frontend (React + Cloudscape)            │
+│  - Login screen with agent selection                        │
+│  - Policy Agent (RAG) or Claims Agent (RLS)                 │
+│  - AI Chat Interface with markdown rendering                │
 └────────────────────────┬────────────────────────────────────┘
-                         │ Access Token (scope: insurance/regular)
+                         │ API calls with Access Token
                          ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                    Backend API (Flask)                       │
-│  - JWT validation                                            │
-│  - Tier extraction from scope                                │
-│  - Request routing                                           │
+│                    Backend API (Flask)                      │
+│  - Demo login (authenticates with Cognito)                  │
+│  - Query routing based on agent_type                        │
+│  - HTTPS calls to AgentCore with Bearer token               │
 └────────────────────────┬────────────────────────────────────┘
-                         │ Tier context
-                         ↓
-┌─────────────────────────────────────────────────────────────┐
-│              Supervisor Agent (AgentCore Runtime)            │
-│  - Query understanding                                       │
-│  - Agent selection                                           │
-│  - Response orchestration                                    │
-└────────────┬───────────────────────────┬────────────────────┘
-             │                           │
-             ↓                           ↓
+                         │
+          ┌──────────────┴──────────────┐
+          ↓                             ↓
 ┌────────────────────────┐  ┌──────────────────────────┐
-│  RAG Agent (Tutorial 01)│  │ RLS Agent (Tutorial 02)  │
-│  - Policy documents     │  │ - Claims database        │
-│  - Benefits info        │  │ - Customer records       │
-│  - Metadata filtering   │  │ - Row-level security     │
+│  Policy Agent          │  │ Claims Agent             │
+│  (Tutorial 01)         │  │ (Tutorial 02)            │
+│  - RAG with KB         │  │ - PostgreSQL with RLS    │
+│  - Metadata filtering  │  │ - Row-level security     │
+│  - Cognito Pool 1      │  │ - Cognito Pool 2         │
 └────────────────────────┘  └──────────────────────────┘
 ```
 
 ## Key Components
 
 ### Frontend (React + Cloudscape)
-- AWS Cloudscape Design System for enterprise UI
-- Cognito authentication flow
-- Claims dashboard with real-time data
-- AI chat interface with streaming responses
-- Tier-specific data visualization
+- Login screen with two agent options (Policy Agent / Claims Agent)
+- Demo users for each agent type
+- Chat interface with markdown and table rendering
+- Clickable suggestion queries
 
 ### Backend (Flask API)
-- JWT token validation
-- Tier extraction from Access Token scopes
-- RESTful API endpoints
-- Supervisor agent integration
-- Error handling and logging
-
-### Supervisor Agent (Strands)
-- Intelligent query routing
-- Tool orchestration
-- Tier context maintenance
-- Streaming response handling
-- Multi-agent coordination
+- `/api/demo-login` - Authenticates with appropriate Cognito pool
+- `/api/query` - Routes to correct agent based on agent_type header
+- Direct HTTPS calls to AgentCore (boto3 SDK doesn't support OAuth)
 
 ## Files
 
 ```
 03-enterprise-orchestration/
-├── 03-enterprise-orchestration.ipynb   # Main tutorial notebook
+├── 03-enterprise-orchestration.ipynb   # Setup notebook (generates .env)
 ├── backend/
 │   ├── app.py                          # Flask API server
-│   ├── config.py                       # Configuration management
-│   ├── cognito_service.py              # Authentication service
-│   └── requirements.txt                # Python dependencies
+│   ├── config.py                       # Configuration from .env
+│   ├── .env                            # Generated by notebook
+│   ├── .env.example                    # Template
+│   └── requirements.txt
 ├── frontend/
 │   ├── src/
 │   │   ├── App.tsx                     # Main application
-│   │   ├── components/                 # UI components
-│   │   │   ├── LoginPage.tsx
-│   │   │   ├── Dashboard.tsx
-│   │   │   └── ChatInterface.tsx
-│   │   ├── services/                   # API services
-│   │   └── utils/                      # Utilities
-│   ├── package.json
-│   └── README.md
-├── supervisor_agent.py                 # Supervisor agent implementation
-├── start.sh                            # Quick start script
-└── README.md                           # This file
+│   │   ├── components/
+│   │   │   ├── LoginScreen.tsx         # Agent selection + demo login
+│   │   │   └── ChatInterface.tsx       # Chat with markdown support
+│   │   ├── services/api.ts             # API client
+│   │   └── utils/formatters.ts
+│   └── package.json
+├── start.sh                            # Start both frontend and backend
+└── README.md
 ```
 
 ## Prerequisites
 
-Before starting this tutorial, you should have completed:
-- **Tutorial 01**: Unstructured Multi-Tenant RAG
-- **Tutorial 02**: Structured Multi-Tenant RLS
+Before starting this tutorial, you must have completed:
+- **Tutorial 01**: Unstructured Multi-Tenant RAG (agent deployed)
+- **Tutorial 02**: Structured Multi-Tenant RLS (agent deployed)
 
-You'll also need:
-- Node.js 16+ and npm
-- Python 3.9+
-- AWS credentials configured
-- Agents from Tutorials 01 & 02 deployed
+Both agents must be running - do NOT run cleanup cells.
 
 ## Quick Start
 
-### Option 1: Run from Notebook (Recommended)
+### Step 1: Run the Notebook
 
 ```bash
 cd notebooks/03-enterprise-orchestration
 jupyter notebook 03-enterprise-orchestration.ipynb
 ```
 
-Then run all cells in order.
+Run all cells to generate `backend/.env` with correct configuration.
 
-### Option 2: Run from Script
+### Step 2: Start the Application
 
 ```bash
-cd notebooks/03-enterprise-orchestration
 ./start.sh
 ```
 
 Then open http://localhost:3000
 
-## Demo Accounts
+## Demo Users
 
-The tutorial creates test users for each tier:
+### Policy Agent (RAG - Tutorial 01)
+| User | Tenant | Access |
+|------|--------|--------|
+| john-regular | Regular Tier | $1000 deductible, standard processing |
+| sarah-platinum | Platinum Tier | $500 deductible, priority processing |
 
-- **Regular Tier**: john-regular@example.com / Pass123!
-  - Access to standard policies and claims
-  - $1000 deductible information
-  - 5-7 day claim processing
-
-- **Platinum Tier**: sarah-platinum@example.com / Pass123!
-  - Access to premium policies and claims
-  - $500 deductible information
-  - 24-48 hour priority processing
-
-## Features
-
-### 1. Authentication & Authorization
-- OAuth 2.0 login with Cognito
-- Custom scope-based tier identification
-- JWT token management
-- Automatic token refresh
-
-### 2. Claims Dashboard
-- Tier-specific claim listings
-- Real-time statistics
-- PostgreSQL RLS enforcement
-- Responsive data tables
-
-### 3. AI Chat Assistant
-- Natural language queries
-- Automatic agent routing
-- Streaming responses
-- Citation tracking
-- Tier-aware responses
-
-### 4. Supervisor Orchestration
-- Query classification
-- Agent selection logic
-- Context propagation
-- Error handling
-- Response aggregation
+### Claims Agent (RLS - Tutorial 02)
+| User | Tenant | Access |
+|------|--------|--------|
+| mike-broker-a | Broker A | CLM-A-001, CLM-A-002, CLM-A-003 |
+| emma-broker-b | Broker B | CLM-B-001, CLM-B-002 |
 
 ## Environment Configuration
 
-### Backend (.env)
+The notebook generates `backend/.env`:
+
 ```bash
-# Database
-DB_HOST=localhost
-DB_NAME=insurance_claims
-DB_USER=postgres
-DB_PASSWORD=your_password
+AWS_REGION=us-west-2
 
-# AWS
-AWS_REGION=us-east-1
+# Tutorial 01 Cognito (RAG)
+RAG_COGNITO_USER_POOL_ID=us-west-2_xxxxx
+RAG_COGNITO_CLIENT_ID=xxxxx
 
-# Cognito
-COGNITO_USER_POOL_ID=your_pool_id
-COGNITO_CLIENT_ID=your_client_id
-COGNITO_DISCOVERY_URL=https://cognito-idp.region.amazonaws.com/pool_id
+# Tutorial 02 Cognito (RLS)
+RLS_COGNITO_USER_POOL_ID=us-west-2_xxxxx
+RLS_COGNITO_CLIENT_ID=xxxxx
 
-# Knowledge Base (from Tutorial 01)
-KNOWLEDGE_BASE_ID=your_kb_id
-
-# Agent ARNs (from Parameter Store)
-RAG_AGENT_ARN=/agents/rag_metadata_arn
-RLS_AGENT_ARN=/agents/rls_agent_arn
+# Agent ARNs
+RAG_AGENT_ARN=arn:aws:bedrock-agentcore:us-west-2:xxx:runtime/unstructured_multitenant_rag-xxx
+RLS_AGENT_ARN=arn:aws:bedrock-agentcore:us-west-2:xxx:runtime/structured_multitenant_rls-xxx
 ```
 
-### Frontend (.env)
-```bash
-REACT_APP_API_URL=http://localhost:5000
-REACT_APP_COGNITO_DOMAIN=your-domain.auth.region.amazoncognito.com
-REACT_APP_COGNITO_CLIENT_ID=your_client_id
-REACT_APP_REDIRECT_URI=http://localhost:3000/callback
-```
+## How It Works
 
-## What You'll Learn
-
-1. **Supervisor Agent Pattern**: How to build intelligent routing logic
-2. **Multi-Agent Orchestration**: Coordinating specialized agents
-3. **Full-Stack Integration**: Connecting React, Flask, and Strands
-4. **Enterprise UI**: Building production-ready interfaces
-5. **Token Propagation**: Maintaining authentication context
-6. **Tier Context**: Propagating tier information across layers
-7. **Error Handling**: Graceful degradation and user feedback
-8. **Streaming Responses**: Real-time AI interactions
-
-## Security Features
-
-- **JWT Validation**: Automatic token verification by AgentCore
-- **Scope-Based Authorization**: Tier extraction from Access Token
-- **Row-Level Security**: PostgreSQL RLS for structured data
-- **Metadata Filtering**: Vector DB filtering for unstructured data
-- **Defense in Depth**: Multiple isolation layers
-- **Secure Communication**: HTTPS in production
-- **Session Management**: Secure token storage
-
-## API Endpoints
-
-### Authentication
-- `POST /api/auth/login` - User login
-- `POST /api/auth/refresh` - Token refresh
-- `POST /api/auth/logout` - User logout
-
-### Claims
-- `GET /api/claims` - List claims (tier-filtered)
-- `GET /api/claims/:id` - Get claim details
-- `GET /api/claims/stats` - Claim statistics
-
-### Chat
-- `POST /api/chat` - Send message to supervisor agent
-- `GET /api/chat/stream` - Streaming chat responses
+1. User selects an agent (Policy or Claims) and demo user
+2. Backend authenticates with the appropriate Cognito pool
+3. Frontend receives real Access Token
+4. User sends a query
+5. Backend calls AgentCore via HTTPS with Bearer token
+6. Agent extracts tenant from JWT and filters data accordingly
+7. Response displayed with markdown rendering
 
 ## Troubleshooting
 
-### Backend Issues
+### Port Already in Use
+The `start.sh` script automatically kills existing processes on ports 5001 and 3000.
 
-**Backend won't start**
-```bash
-# Check PostgreSQL
-psql -h localhost -U postgres -d insurance_claims
+### Demo Login Failed
+- Ensure Tutorial 01 and 02 notebooks were run completely
+- Check that Cognito users were created
+- Verify `.env` has correct pool IDs and client IDs
 
-# Verify environment variables
-cat backend/.env
-
-# Check Python dependencies
-pip install -r backend/requirements.txt
-```
-
-**Agent invocation fails**
-```bash
-# Verify agent ARNs in Parameter Store
-aws ssm get-parameter --name /agents/rag_metadata_arn
-aws ssm get-parameter --name /agents/rls_agent_arn
-
-# Check IAM permissions
-aws sts get-caller-identity
-```
-
-### Frontend Issues
-
-**Frontend won't start**
-```bash
-# Install dependencies
-cd frontend
-npm install
-
-# Check Node version (should be 16+)
-node --version
-
-# Verify backend is running
-curl http://localhost:5000/health
-```
-
-**Authentication fails**
-```bash
-# Verify Cognito configuration
-aws cognito-idp describe-user-pool --user-pool-id your_pool_id
-
-# Check redirect URIs
-# Must include http://localhost:3000/callback
-```
-
-### Database Issues
-
-**RLS not working**
-```sql
--- Check RLS is enabled
-SELECT tablename, rowsecurity 
-FROM pg_tables 
-WHERE schemaname = 'public';
-
--- Verify policies
-SELECT * FROM pg_policies WHERE tablename = 'claims';
-
--- Test RLS
-SET app.current_tier = 'regular';
-SELECT * FROM claims;
-```
+### Agent Call Failed
+- Ensure agents from Tutorial 01 and 02 are still deployed
+- Check agent ARNs in `.env` match deployed agents
+- Verify AWS credentials are configured
 
 ## Cleanup
 
-### From Notebook
-```python
-# Stop processes
-backend_process.terminate()
-frontend_process.terminate()
-
-# Delete supervisor agent
-supervisor_runtime.delete()
-```
-
-### From Command Line
 ```bash
-# Kill processes
-pkill -f "python backend/app.py"
-pkill -f "npm start"
+# Stop the application
+Ctrl+C in the terminal running start.sh
 
-# Or use the stop script
-./stop.sh
+# Or manually kill processes
+pkill -f "python app.py"
+pkill -f "react-scripts"
 ```
-
-## Production Deployment
-
-For production deployment, consider:
-
-1. **Infrastructure**
-   - Use AWS ECS/EKS for containerized deployment
-   - CloudFront for frontend distribution
-   - ALB for backend load balancing
-   - RDS for PostgreSQL with Multi-AZ
-
-2. **Security**
-   - Enable HTTPS with ACM certificates
-   - Use AWS Secrets Manager for credentials
-   - Enable CloudTrail for audit logging
-   - Implement rate limiting
-
-3. **Monitoring**
-   - CloudWatch for logs and metrics
-   - X-Ray for distributed tracing
-   - Custom dashboards for business metrics
-
-4. **Scaling**
-   - Auto-scaling for backend services
-   - Read replicas for database
-   - CloudFront caching for static assets
-   - AgentCore auto-scaling
 
 ## Next Steps
 
-After completing this tutorial:
 - Customize the UI for your use case
-- Add more specialized agents
-- Implement advanced routing logic
-- Add monitoring and observability
-- Deploy to production environment
-- Integrate with existing systems
-
-## Support
-
-For issues or questions:
-- Check the troubleshooting section
-- Review Tutorial 01 and 02 documentation
-- Consult AWS Bedrock AgentCore documentation
-- Review Strands Agents documentation
+- Add more demo users
+- Integrate with your own Cognito setup
+- Deploy to production with proper HTTPS
