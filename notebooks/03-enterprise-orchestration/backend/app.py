@@ -1,3 +1,8 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#
+# DEMO CODE - For educational purposes only. See SECURITY.md before production use.
+
 import os
 import logging
 import urllib.parse
@@ -66,7 +71,8 @@ def invoke_agent(agent_arn: str, prompt: str, access_token: str, session_id: str
             headers['X-Runtime-Session-Id'] = session_id
         
         logger.info(f"Calling agent: {agent_arn.split('/')[-1]} (session: {session_id})")
-        response = requests.post(endpoint, data=payload, headers=headers)
+        response = requests.post(endpoint, data=payload, headers=headers, timeout=60)
+        response.raise_for_status()
         
         if response.status_code == 200:
             return response.json()
@@ -90,8 +96,9 @@ def demo_login():
     username = data.get('username')
     agent_type = data.get('agent_type', 'rls')
     
-    # All demo users use same password
-    password = 'Pass123!'
+    # Demo password from environment variable (default for local dev only)
+    # WARNING: In production, use proper authentication flow
+    password = os.getenv('DEMO_PASSWORD', 'Pass123!')
     
     # Select Cognito pool based on agent type
     if agent_type == 'rag':
@@ -175,5 +182,8 @@ def query():
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5001))
-    logger.info(f"Starting server on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=True)
+    # DEMO ONLY: debug=True for local development
+    # Production deployments MUST set debug=False
+    debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
+    logger.info(f"Starting server on port {port} (debug={debug_mode})")
+    app.run(host='127.0.0.1', port=port, debug=debug_mode)

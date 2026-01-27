@@ -1,6 +1,16 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#
+# DEMO CODE - For educational purposes only. See SECURITY.md before production use.
+
 """
 AWS resource management utilities for multi-tenant samples.
 Handles resource creation and reuse across notebook executions.
+
+NOTE: This module uses time.sleep() calls for polling AWS resource status.
+These are necessary for waiting on asynchronous AWS operations (collection creation,
+policy propagation, resource deletion) and are NOT debug code. In production,
+consider using AWS SDK waiters or Step Functions for more robust polling.
 """
 
 import boto3
@@ -148,8 +158,8 @@ class S3Manager:
         self.client = boto3.client("s3", region_name=region)
         self.region = region
 
-    def get_or_create_bucket(self, bucket_name: str):
-        """Get existing bucket or create new one"""
+    def get_or_create_bucket(self, bucket_name: str, enable_versioning: bool = False):
+        """Get existing bucket or create new one with security best practices"""
         try:
             self.client.head_bucket(Bucket=bucket_name)
             print(f"✓ Found existing bucket: {bucket_name}")
@@ -167,6 +177,49 @@ class S3Manager:
                 Bucket=bucket_name,
                 CreateBucketConfiguration={"LocationConstraint": self.region},
             )
+
+        # Enable Block Public Access (security best practice)
+        try:
+            self.client.put_public_access_block(
+                Bucket=bucket_name,
+                PublicAccessBlockConfiguration={
+                    'BlockPublicAcls': True,
+                    'IgnorePublicAcls': True,
+                    'BlockPublicPolicy': True,
+                    'RestrictPublicBuckets': True
+                }
+            )
+            print(f"  ✓ Enabled Block Public Access")
+        except ClientError as e:
+            print(f"  ⚠ Could not enable Block Public Access: {e}")
+
+        # Enable server-side encryption (SSE-S3)
+        try:
+            self.client.put_bucket_encryption(
+                Bucket=bucket_name,
+                ServerSideEncryptionConfiguration={
+                    'Rules': [{
+                        'ApplyServerSideEncryptionByDefault': {
+                            'SSEAlgorithm': 'AES256'
+                        },
+                        'BucketKeyEnabled': True
+                    }]
+                }
+            )
+            print(f"  ✓ Enabled server-side encryption (SSE-S3)")
+        except ClientError as e:
+            print(f"  ⚠ Could not enable encryption: {e}")
+
+        # Enable versioning if requested
+        if enable_versioning:
+            try:
+                self.client.put_bucket_versioning(
+                    Bucket=bucket_name,
+                    VersioningConfiguration={'Status': 'Enabled'}
+                )
+                print(f"  ✓ Enabled versioning")
+            except ClientError as e:
+                print(f"  ⚠ Could not enable versioning: {e}")
 
         print(f"✓ Created bucket: {bucket_name}")
         return bucket_name
@@ -259,7 +312,8 @@ class OpenSearchServerlessManager:
                                 self.client.delete_security_policy(name=policy['name'], type='encryption')
                                 print(f"    Deleted encryption policy: {policy['name']}")
                                 break
-                    except:
+                    except Exception as e:
+                        # Ignore errors during cleanup - policy may already be deleted
                         pass
                 
                 policies_to_check = self.client.list_security_policies(type='network')
@@ -275,12 +329,14 @@ class OpenSearchServerlessManager:
                                     self.client.delete_security_policy(name=policy['name'], type='network')
                                     print(f"    Deleted network policy: {policy['name']}")
                                     break
-                    except:
+                    except Exception as e:
+                        # Ignore errors during cleanup - policy may already be deleted
                         pass
                 
                 print(f"  Waiting for deletion...")
                 time.sleep(30)
         except Exception as e:
+            # Ignore errors during cleanup - collection may not exist
             pass
         
         # Create new collection
@@ -329,6 +385,9 @@ class OpenSearchServerlessManager:
                 raise
 
         # Step 2: Create network policy
+        # SECURITY WARNING: AllowFromPublic=True allows access from any IP.
+        # For production, use VPC endpoints or restrict to specific IP ranges.
+        # See: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-network.html
         network_policy = [
             {
                 "Rules": [
@@ -337,7 +396,7 @@ class OpenSearchServerlessManager:
                         "Resource": [f"collection/{collection_name}"],
                     }
                 ],
-                "AllowFromPublic": True,
+                "AllowFromPublic": True,  # DEMO ONLY - restrict in production
             }
         ]
 
@@ -475,6 +534,9 @@ class OpenSearchServerlessManager:
                 raise
 
         # Step 2: Create network policy
+        # SECURITY WARNING: AllowFromPublic=True allows access from any IP.
+        # For production, use VPC endpoints or restrict to specific IP ranges.
+        # See: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-network.html
         network_policy = [
             {
                 "Rules": [
@@ -483,7 +545,7 @@ class OpenSearchServerlessManager:
                         "Resource": [f"collection/{collection_name}"],
                     }
                 ],
-                "AllowFromPublic": True,
+                "AllowFromPublic": True,  # DEMO ONLY - restrict in production
             }
         ]
 
@@ -1280,7 +1342,8 @@ def cleanup_orphaned_opensearch_policies(region: str, prefix: str = "kb-"):
                                 oss_client.delete_security_policy(name=policy_name, type=policy_type)
                                 print(f"  Deleted {policy_type} policy: {policy_name}")
                                 deleted_count += 1
-                            except:
+                            except Exception as delete_err:
+                                # Ignore deletion errors during cleanup
                                 pass
             except Exception as e:
                 print(f"⚠ Error processing {policy_type} policies: {e}")
@@ -1317,7 +1380,8 @@ def cleanup_orphaned_opensearch_policies(region: str, prefix: str = "kb-"):
                             oss_client.delete_access_policy(name=policy_name, type='data')
                             print(f"  Deleted access policy: {policy_name}")
                             deleted_count += 1
-                        except:
+                        except Exception as delete_err:
+                            # Ignore deletion errors during cleanup
                             pass
         except Exception as e:
             print(f"⚠ Error processing access policies: {e}")
@@ -1664,14 +1728,19 @@ class AuroraServerlessManager:
             )
             sg_id = sg_response["GroupId"]
             
-            # Allow PostgreSQL access from anywhere (for demo - restrict in production)
+            # SECURITY WARNING: 0.0.0.0/0 allows access from any IP address.
+            # For production deployments:
+            # - Use VPC CIDR range (e.g., "10.0.0.0/16") for internal access only
+            # - Or use specific IP ranges for authorized clients
+            # - Consider using AWS PrivateLink for cross-VPC access
+            # See: https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/AuroraPostgreSQL.Security.html
             self.ec2.authorize_security_group_ingress(
                 GroupId=sg_id,
                 IpPermissions=[{
                     "IpProtocol": "tcp",
                     "FromPort": 5432,
                     "ToPort": 5432,
-                    "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": "PostgreSQL access"}],
+                    "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": "PostgreSQL access - DEMO ONLY, restrict in production"}],
                 }],
             )
             print(f"  ✓ Created security group: {sg_id}")

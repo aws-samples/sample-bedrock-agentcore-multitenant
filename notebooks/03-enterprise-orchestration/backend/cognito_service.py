@@ -1,3 +1,8 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#
+# DEMO CODE - For educational purposes only. See SECURITY.md before production use.
+
 import boto3
 import jwt
 import requests
@@ -253,12 +258,19 @@ class CognitoService:
         """Get JSON Web Key Set for token verification"""
         if self._jwks is None:
             jwks_url = f'https://cognito-idp.{self.region}.amazonaws.com/{self.user_pool_id}/.well-known/jwks.json'
-            response = requests.get(jwks_url)
+            response = requests.get(jwks_url, timeout=30)
+            response.raise_for_status()
             self._jwks = response.json()
         return self._jwks
     
     def decode_token(self, token, verify=False):
-        """Decode JWT token and extract claims"""
+        """
+        Decode JWT token and extract claims.
+        
+        WARNING: This demo code decodes tokens without signature verification.
+        In production, always verify JWT signatures using JWKS from Cognito.
+        See: https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-tokens-verifying-a-jwt.html
+        """
         try:
             if verify:
                 # For production, implement proper JWT verification
@@ -267,9 +279,13 @@ class CognitoService:
                 # Implementation of JWT verification with JWKS would go here
                 pass
             
-            # For development, decode without verification
-            # In production, always verify tokens!
-            decoded = jwt.decode(token, options={"verify_signature": False})
+            # DEMO ONLY: Decode without verification for local development
+            # Production deployments MUST verify JWT signatures
+            decoded = jwt.decode(
+                token, 
+                options={"verify_signature": False},
+                algorithms=["RS256"]
+            )
             return decoded
             
         except jwt.InvalidTokenError as e:

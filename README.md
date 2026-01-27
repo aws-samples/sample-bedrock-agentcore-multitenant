@@ -295,4 +295,6 @@ This library is licensed under the MIT-0 License. See the [LICENSE](LICENSE) fil
 
 ## Security
 
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for security issue notifications.
+See [SECURITY.md](SECURITY.md) for security considerations and [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for security issue notifications.
+
+**⚠️ Important**: This repository contains demonstration code for educational purposes. Review [SECURITY.md](SECURITY.md) before using any code in production environments.
