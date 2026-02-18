@@ -76,7 +76,7 @@ Tenant isolation at the database layer starts with [data partitioning design](ht
 | **Bridge** | Shared instance, different schema per tenant | Better resource sharing | Complex management |
 | **Pool** | Shared tables with tenant IDs | Cost-efficient | Requires strong security controls |
 
-For more information, see the [AWS SaaS Factory whitepaper](https://d1.awsstatic.com/whitepapers/Multi_Tenant_SaaS_Storage_Strategies.pdf).
+For more information, see the [AWS SaaS Factory whitepaper](https://docs.aws.amazon.com/whitepapers/latest/multi-tenant-saas-storage-strategies/multi-tenant-saas-storage-strategies.html).
 
 Centralizing isolation policies at the data layer reduces the burden on developers. You get the cost benefits of the pool model while reducing the risk of cross-tenant data access. With Row-Level Security (RLS), you define which users or roles can access specific records based on security policies at the database level. The following three tutorials walk you through implementing these patterns step by step.
 
