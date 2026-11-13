@@ -2,7 +2,7 @@
 
 When you build a multi-tenant agentic AI application, you need secure data isolation at every layer of the stack to make sure each customer sees only their own data. An insurance claims application, for example, might let brokers ask "How many claims were filed last week?" or "What is the maximum deductible for auto insurance?". The answer must reflect only that broker's customers—not every customer in the database.
 
-This post shows you how to implement **tenant isolation** in agentic AI applications. You'll build a defense-in-depth architecture using **Row-Level Security (RLS)** for structured data, **metadata filtering** for unstructured data with [Amazon Bedrock Knowledge Bases](https://aws.amazon.com/bedrock/knowledge-bases/), and secure tenant context management with [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/). 
+This repository demonstrates how to implement **tenant isolation** in agentic AI applications. You'll build a defense-in-depth architecture using **Row-Level Security (RLS)** for structured data, **metadata filtering** for unstructured data with [Amazon Bedrock Knowledge Bases](https://aws.amazon.com/bedrock/knowledge-bases/), and secure tenant context management with [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/). 
 
 You'll work through three hands-on tutorials: a Retrieval Augmented Generation (RAG) pipeline with metadata filtering, a database layer with Row-Level Security, and a web demo that ties both patterns together.
 
